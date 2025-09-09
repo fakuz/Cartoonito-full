@@ -1,7 +1,7 @@
 name: IPTV Restream
 
 on:
-  workflow_dispatch: # solo ejecución manual
+  workflow_dispatch: # ejecución manual
 
 jobs:
   restream:
@@ -15,20 +15,31 @@ jobs:
       - name: Instalar ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Leer link y generar M3U8 restream
+      - name: Procesar todos los links de origen.txt
         run: |
-          LINK=$(cat origen.txt)
           mkdir -p playlist
-          ffmpeg -i "$LINK" \
-          -c:v copy -c:a aac -b:a 128k \
-          -f hls -hls_time 5 -hls_list_size 0 -hls_flags independent_segments playlist/restream.m3u8
+          echo "#EXTM3U" > playlist/playlist.m3u
+          i=1
+          while IFS= read -r LINK; do
+            if [ ! -z "$LINK" ]; then
+              echo "Procesando $LINK -> playlist/restream_$i.m3u8"
+              ffmpeg -i "$LINK" \
+                -c:v copy -c:a aac -b:a 128k \
+                -f hls -hls_time 5 -hls_list_size 0 -hls_flags independent_segments \
+                playlist/restream_$i.m3u8
+              
+              echo "#EXTINF:-1 tvg-id=\"\" tvg-name=\"Canal $i\" tvg-logo=\"\" group-title=\"Restream\", Canal $i" >> playlist/playlist.m3u
+              echo "playlist/restream_$i.m3u8" >> playlist/playlist.m3u
+              i=$((i+1))
+            fi
+          done < origen.txt
 
-      - name: Commit y push resultado
+      - name: Commit y push resultados
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add playlist/restream.m3u8
-          git commit -m "Actualizar restream.m3u8 [skip ci]" || echo "Sin cambios"
+          git add playlist/
+          git commit -m "Actualizar restreams y playlist.m3u [skip ci]" || echo "Sin cambios"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
